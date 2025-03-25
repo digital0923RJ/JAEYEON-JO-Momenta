@@ -1,6 +1,193 @@
+# JAEYEON-JO - Momenta Audio Deepfake Detection
+
+## Summary
+
+To briefly summarize, I selected three models—ResNet2, LCNN, and Wav2Vec2.0—for comparison.  
+After reviewing several papers, I found that most models struggle to generalize well.  
+Rather than prioritizing maximum accuracy, I focused on **real-time detection** of audio deepfakes.  
+If this were a competition or a task purely about performance, I would have chosen heavier models.  
+However, if a model can reliably achieve ~90% accuracy, my priority is to **respond quickly** with a lightweight model in real-world scenarios.
+
+---
+
+## Audio Deepfake Detection Models Comparison Table
+
+| Model         | Key Technical Innovation                                       | Reported Performance                       | Why It's Promising                                                                 | Potential Limitations                                                           |
+|---------------|---------------------------------------------------------------|---------------------------------------------|--------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|
+| **ResNet2**   | - Residual learning<br>- Dilated convolutions & attention pooling | - EER ≤ **1.6%** (ADD 2022)<br>- Accuracy **98%+** | - Powerful deep feature extraction<br>- Robust across conditions<br>- Great for conversational detection | - High computational cost<br>- Needs Transformer for long-range context         |
+| **LCNN**      | - Lightweight CNN<br>- Max-Feature-Map (MFM) for noise suppression | - EER ~**3–5%**<br>- Real-time capable       | - Ideal for **real-time detection**<br>- Edge deployable<br>- Noise-tolerant         | - Limited context modeling<br>- Weaker for complex, long speech segments        |
+| **Wav2Vec2.0**| - Self-supervised Transformer<br>- Raw audio input             | - EER ≤ **2.2%**<br>- Accuracy **97%+**     | - Captures long context, emotion, and semantics<br>- Strong few-shot performance     | - Large model size<br>- High compute requirement<br>- Hard to use on edge       |
+
+---
+
+### ✅ Why I Chose LCNN
+
+As shown in the table below, LCNN is:
+- ✅ Real-time capable  
+- ✅ Edge-device friendly  
+- ✅ Compatible with log-Mel features  
+- ✅ Performs well with lightweight setups
+
+| Model         | Accuracy | EER     | Real-time Capability       | Conversational Analysis     |
+|---------------|----------|---------|----------------------------|-----------------------------|
+| **ResNet2**   | 98%+     | ≤1.6%   | ⚠️ Moderate (needs optimization) | ✅ Highly suitable           |
+| **LCNN**      | ~95%     | 3–5%    | ✅ Very high                | ⚠️ Limited                   |
+| **Wav2Vec2.0**| 97%+     | ≤2.2%   | ❌ Not suitable             | ✅ Best performance          |
+
+While LCNN may have slightly lower accuracy, it’s the most practical for real-time use.  
+Because LCNN lacks deep architecture, I focused on **strong preprocessing** to extract meaningful features.  
+I chose `log-Mel + SpecAverage` as my primary preprocessing method, commonly used in research.  
+SpecAverage helps preserve feature diversity by masking values with average energy.  
+Mel spectrograms are sensitive to duration, so I normalized all inputs to **5 seconds** using padding.
+
+---
+
+## Part 3: Documentation & Analysis
+
+### 1️⃣ Implementation Challenges
+
+| **Challenge**                        | **Details**                                                                                                      |
+|-------------------------------------|------------------------------------------------------------------------------------------------------------------|
+| Large Dataset Handling              | Cached extracted log-Mel spectrograms as `.npy` files to avoid recomputation and speed up training.             |
+| File Format Inconsistencies         | Used case-insensitive glob pattern `**/*.[wW][aA][vV]` to handle both `.wav` and `.WAV` files uniformly.        |
+| Overfitting Risk & Duration Bias    | Trimmed/padded all audio clips to 5 seconds to remove duration-based bias.                                      |
+| Model Generalization                | Used SpecAverage augmentation to help generalize to unseen fake audio.                                          |
+| Lack of Real Human Speech Data      | Added LJSpeech dataset to represent genuine human voice and increase dataset realism.                           |
+
+### 2️⃣ Solutions to Challenges
+
+| **Challenge**             | **Solution**                                                                 |
+|---------------------------|------------------------------------------------------------------------------|
+| Large dataset             | Cached `.npy` log-Mel features for reuse                                     |
+| File format issues        | Used `**/*.[wW][aA][vV]` glob pattern                                         |
+| Audio length bias         | Fixed all audio to 5 seconds via padding/trimming                            |
+| Overfitting               | Applied SpecAverage and selected a lightweight LCNN architecture             |
+| Lack of real speech data  | Included LJSpeech dataset for authentic audio                                |
+
+### 3️⃣ Assumptions Made
+
+- **5 seconds** of audio contains sufficient signal for detecting deepfake cues.
+- **log-Mel + SpecAverage** preprocessing captures richer features than MFCC alone.
+- **LCNN** is sufficient for baseline detection in real-time applications.
+- Case differences in file extensions (e.g., `.wav` vs `.WAV`) are syntactic, not acoustic.
+
+---
+
+### 📊 Model Pipeline Summary
+
+| Component          | Description                                                                 |
+|--------------------|-----------------------------------------------------------------------------|
+| **Preprocessing**  | Applied `log-Mel + SpecAverage` using `librosa`.                            |
+| **Caching**        | Saved spectrograms as `.npy` for faster future access.                      |
+| **Data Split**     | Used stratified `train_test_split` to balance labels.                       |
+| **Model**          | LCNN with ReLU activations, 2 CNN layers, and AdaptiveAvgPooling.           |
+| **Training/Eval**  | Used `BCELoss` and `Adam`; tracked AUC, ACC, and EER per epoch.             |
+| **Visualization**  | Saved performance bar chart as `lcnn_performance.png`.                      |
+| **Output**         | Printed metrics to console; exported visualization image.                   |
+
+---
+
+### ✅ High-Level Model Description
+
+- **Input:** Each 5-second audio clip is transformed into a log-Mel spectrogram with SpecAverage masking.
+- **Architecture:** LCNN with 2 convolutional layers + ReLU + BatchNorm + AdaptiveAvgPool, followed by a fully connected layer with Sigmoid.
+- **Loss:** Binary Cross-Entropy (BCELoss)
+- **Metrics:**  
+  - AUC: Area under the ROC curve  
+  - ACC: Classification accuracy  
+  - EER: Equal Error Rate — when False Positive Rate equals False Negative Rate
+
+---
+
+### ✅ Performance Results
+
+- **LCNN Epoch 20:**  
+  `Loss = 0.6353`  
+  `AUC = 0.7233`  
+  `ACC = 0.5421`  
+  `EER = 0.3371`
+
+---
+
+### 🔍 Strengths & Weaknesses
+
+#### ✅ Strengths
+
+- **Lightweight & Fast:** Suitable for edge deployment with limited resources.  
+- **Effective on Short Clips:** Handles 5-second inputs well.  
+- **Interpretable:** Simple architecture makes debugging and visualization easier.
+
+#### ⚠️ Weaknesses
+
+- **Overfitting Risk:** Tends to memorize small datasets.  
+- **Limited Context:** LCNN lacks long-range modeling like Transformers.  
+- **Performance Ceiling:** Struggles to surpass 75–80% AUC without richer features or ensembles.
+
+---
+
+### ✅ Suggestions for Future Improvements
+
+- Use more realistic datasets: **ASVspoof**, **FakeAVCeleb**, call center audio.
+- Add data from **noisy, multilingual, and modern TTS** environments (e.g., VITS, Bark, Vall-E).
+- Incorporate advanced augmentation: SpecMix, pitch shifting, time-stretching, background noise.
+
+---
+
+## 3️⃣ Reflection
+
+### Q1 & Q2: Major Challenges & Real-World Performance
+
+| Category                | Challenge / Consideration                                                       | Solution / Implementation                                                  |
+|-------------------------|----------------------------------------------------------------------------------|-----------------------------------------------------------------------------|
+| File Format Issues   | Case mismatch in `.wav` vs `.WAV` created loading bugs                          | Case-insensitive loader and file handling                                   |
+| Preprocessing Bias   | Model overfitting to audio duration rather than content                         | Applied fixed-length 5s input + SpecAverage augmentation                    |
+| Model Selection       | Needed a balance of speed vs performance for production                         | Chose LCNN for fast, efficient deployment                                   |
+| Realism in Dataset   | Many datasets are synthetic only                                                | Included real human speech via LJSpeech dataset                             |
+
+---
+
+### Q3: What Additional Data Would Improve Performance?
+
+- **Noisy real-world audio** (e.g., phone calls, YouTube, podcasts)  
+- **Modern fake audio** (e.g., Vall-E, Bark, VITS samples)  
+- **Multilingual datasets** to improve generalization  
+- **Augmentations** like SpecMix, pitch shifting, time-stretching, noise injection
+
+---
+
+### Q4: Deployment Strategy
+
+#### Dataset Expansion
+- Add data from diverse sources, languages, and TTS models for generalization.
+
+####  Cloud-Based Automation
+- Use **AWS SageMaker** or **Azure ML Pipelines** to automate training and deployment workflows.
+- Store and manage datasets in **S3** or **Azure Blob Storage**.
+
+#### Inference Pipeline
+- Apply 5-second **sliding window** over long audio for real-time chunk-wise prediction.
+- Aggregate outputs for final decisions.
+
+#### Edge Deployment
+- Deploy **LCNN** on mobile or embedded devices for fast inference:
+  - Mobile phones (iOS/Android)
+  - Raspberry Pi / Jetson / IoT devices
+- Convert model to **ONNX**, **TorchScript**, or **TFLite**.
+
+#### Monitoring & Retraining
+- Set up real-time dashboards (CloudWatch, Grafana)  
+- Monitor prediction confidence and drift  
+- Retrain on new samples as synthesis methods evolve
+
+
+
+
 # JAEYEON-JO-Momenta
 
-## 🔍 Audio Deepfake Detection Models Comparison Table
+간단하게 우선 설명을 하자만, 나는 ResNet2, LCNN, Wav2Vec2.0를 선정하였다. 
+논문을 읽어보니, 대부분의 모델이 아직까지는 일반화 시 성능이 떨어지는 것을 보고 성능의 우선보다는  real-time에서 deepfake를 실시간 감지하는 것에 최우선을 두었다. 만약 이것이 대회거나 성능 향상에만 초점을 맞췄으면 computation이 많이 요구되는 모델을 사용했을 것인데, 그게 아니라, 정확도가 약 90%까지 확보됬다고 생각하면 그냥 실시간 정보에 빠르게 대응할 수 있는 모델을 선정했다. 
+
+## 🔍 Audio Deepfake Detection Models Comparison Table 아래는 논문을 읽고 내가 3개 선택한 모델 분석이다. 
 
 | Model       | Key Technical Innovation | Reported Performance | Why It's Promising | Potential Limitations |
 |-------------|---------------------------|-----------------------|----------------------|------------------------|
@@ -9,8 +196,12 @@
 | **Wav2Vec2.0** | - Self-supervised learning<br>- Raw audio input + Transformer-based architecture | - EER ≤ **2.2%**<br>- Accuracy **97%+** | - Outstanding at capturing long context, emotion, and meaning<br>- Performs well with **limited labeled data**<br>- Ideal for real conversation analysis | - Large model size and high compute cost<br>- Requires optimization for real-time deployment |
 
 ---
-
-### ✅ Summary Table 
+### 🔍 그리고 나는 이 중에서 LCNN을 선택했다. Why my choice is LCNN?
+아래 표에서 보이듯, 
+- ✅ Real-time capable  
+- ✅ Easy to deploy on edge devices  
+- ✅ Compatible with log-Mel features  
+- ✅ Performs well with low-compute environments
 
 | Model       | Accuracy | EER     | Real-time Capability | Conversational Analysis |
 |-------------|----------|---------|------------------------|--------------------------|
@@ -19,88 +210,191 @@
 | Wav2Vec2.0  | 97%+     | ≤2.2%   | ❌ Needs high resources | ✅ Best performance |
 
 
-## 2. 📊 Model Analysis
 
-### 🤖 Models Considered
+보면 LCNN은 정확도가 95%까지 올라가고 Very high real-time capacity가 있다고 생각되어 LCNN 모델을 선택했다. 
+대신, 전처리가 중요하여 전처리를 잘하려고 노력했다.
+대략적으로 크게 전처리하는 방식은 MFCC, Mel, SpecAverage가 논문보니까 많이 쓰였더라. 그래서 나도 이 방법을 통해 전처리 하려고 했다. 
+LCNN은 정확도가 상대적으로 낮은 모델이라 전처리를 통해 최대한 많은 feature 특징들을 뽑으려고 했다. 
+그래서 1번의 전처리본다는 log-Mel + SpecAvaerge 전처리를 선택했다. SpecAverage를 선택한 것은 마스킹을 평균으로 조절하면서 특성을 잘 뽑을 수 있기에 선택했다. 
+대신 Mel은 오디오 길이에 민감하기에 모든 오디오를 5초로 통일하려고 했고 padding함 
 
-| Model        | Key Features                                      | EER      | Real-Time | Contextual Strength |
-|--------------|---------------------------------------------------|----------|------------|----------------------|
-| **LCNN**     | Lightweight CNN + Max-Feature-Map                 | 3–5%     | ✅ High     | ⚠️ Limited           |
-| **ResNet2**  | Residual learning + dilated conv + attention pooling | ≤1.6% | ⚠️ Moderate | ✅ Strong            |
-| **Wav2Vec2.0** | Transformer-based, raw waveform input            | ≤2.2%    | ❌ No       | ✅ Excellent         |
 
----
+## Part 3: Documentation & Analysis
 
-### 🔍 Why LCNN?
+1. Document your implementation process, including:
+    - Any challenges encountered
 
-- ✅ Real-time capable  
-- ✅ Easy to deploy on edge devices  
-- ✅ Compatible with log-Mel features  
-- ✅ Performs well with low-compute environments  
+| **Challenge**                       | **Details**                                                                                                       |
+|------------------------------------|-------------------------------------------------------------------------------------------------------------------|
+| **Large Dataset Handling**         | Cached extracted log-Mel spectrograms as `.npy` files to avoid recomputation and reduce training time.           |
+| **File Format Inconsistencies**    | Used case-insensitive glob pattern `**/*.[wW][aA][vV]` to handle `.wav` and `.WAV` files uniformly.               |
+| **Overfitting Risk & Duration Bias** | Applied fixed-length preprocessing: all audio clips were trimmed or zero-padded to 5 seconds to remove bias.     |
+| **Model Generalization**           | Used SpecAverage augmentation to reduce overfitting and promote robustness in learning.                          |
+| **Lack of Real Human Speech Data** | Added the LJSpeech dataset to introduce authentic human voice samples and improve realism.                       |
+      
+    - How you addressed these challenges
+ | **Challenge**            | **Solution**                                                                 |
+|--------------------------|------------------------------------------------------------------------------|
+| Large dataset            | Used **caching (`.npy`)** of extracted log-Mel features to avoid recomputation |
+| File format issues       | Implemented case-insensitive glob pattern: `**/*.[wW][aA][vV]`                |
+| Audio length bias        | All audio was **padded or trimmed to 5 seconds** using fixed-length preprocessing |
+| Overfitting              | Applied **SpecAverage augmentation** and used a **lightweight CNN model (LCNN)** |
+| Real speech data scarcity | Added **LJSpeech dataset** to represent real human voice                    |
+   
 
----
+    - Assumptions made
+    - **5 seconds of audio** is enough to capture the key acoustic features necessary to distinguish between real and fake speech.
+- Using **log-Mel spectrograms combined with SpecAverage masking** improves generalization and reduces overfitting compared to MFCCs alone.
+- A **lightweight architecture (LCNN)** is sufficient for baseline detection without requiring large-scale Transformer-based models like Wav2Vec 2.0.
+- Both `.wav` and `.WAV` formats are **acoustically identical**; the issue is purely syntactic and handled during file loading.
 
-### 🔧 Preprocessing Strategy
+2. Include an analysis section that addresses:
+📊 Model Analysis
+| 구성 요소     | 설명 |
+|----------------|------|
+| **전처리**      | `log-Mel + SpecAverage` 적용. `librosa`를 이용하여 오디오를 로딩하고 스펙트로그램 변환 수행. |
+| **캐싱**        | `.npy` 형태로 저장하여 재사용 가능, 빠른 데이터 로딩 가능. |
+| **데이터 분리** | `train_test_split`에 기반하여 stratified split 적용, 클래스 비율 유지. |
+| **모델 구조**   | LCNN 기반 구조. `ReLU` 활성화 함수 사용. 2층 CNN + `AdaptiveAvgPool`로 출력 정규화. |
+| **훈련/평가 루프** | `BCELoss`와 `Adam` Optimizer 사용. 매 epoch마다 `AUC`, `ACC`, `EER` 지표 출력. |
+| **시각화**     | 최종 성능을 `막대그래프`로 시각화하여 `lcnn_performance.png`로 저장. |
+| **최종 출력**   | 콘솔에 평가 지표 출력 + 이미지 파일 저장 (`lcnn_performance.png`). |
 
-| Method        | Pros                                      | Cons                               |
-|---------------|-------------------------------------------|------------------------------------|
-| **MFCC**      | Compact, traditional                      | May lose fine-grained patterns     |
-| **Log-Mel**   | Preserves spectro-temporal details        | Needs augmentation to generalize   |
-| **SpecAverage** | Adds regularization via masking          | Requires careful tuning            |
+### ✅ Why LCNN Was Selected
 
-> **Final Choice**: `log-Mel + SpecAverage`, fixed to **5-second duration**  
-> → Prevents length-based bias and encourages content-based learning
+- **Real-time capability:**  
+  LCNN (Lightweight Convolutional Neural Network) is fast and computationally efficient—ideal for edge or mobile deployment.
 
----
+- **Proven effectiveness:**  
+  LCNN has been shown to perform well in fake audio detection tasks with relatively low error rates.
 
-## 3. 📈 Performance (Ongoing)
+- **Compatibility:**  
+  Works well with log-Mel spectrograms and benefits from data augmentations like SpecAverage.
 
-Model training is currently in progress. Early observations suggest:
+- **Interpretability:**  
+  Easier to visualize and understand than Transformer-based models.
 
-- ⚡ Fast convergence (LCNN overfits quickly → needs regularization)
-- 🎯 Accuracy reaches 100% too early → dataset still small and simple
+### ✅ How the model works (high-level technical explanation)
 
-### 🔍 Metrics to be Evaluated:
+- **Input:** Each audio file is converted into a log-Mel spectrogram, augmented using SpecAverage masking, and reshaped to a fixed length (5 seconds)
+- **Model Architecture:** Two convolutional layers with ReLU, followed by BatchNorm and Adaptive Average Pooling.Fully connected layer with a sigmoid activation outputs the probability of the audio being fake.
+- **Loss Function:** Binary Cross-Entropy Loss (BCELoss) is used since this is a binary classification problem (real vs. fake).
+- **Evaluation Metrics:** AUC (Area Under ROC Curve): How well the model separates the two classes, Accuracy: Proportion of correct predictions, EER (Equal Error Rate): The point where False Positive Rate = False Negative Rate.
 
-- Accuracy  
-- AUC (ROC)  
-- EER (Equal Error Rate)
+### ✅ Performance results on your chosen dataset
+- #### LCNN Epoch 20: Loss=0.6353, AUC=0.7233, ACC=0.5421, EER=0.3371
+  
+### 🔍 Strengths & Weaknesses
+#### 🟢 Strengths
 
----
+- **Lightweight & Fast**  
+  Can be deployed in low-resource environments.
 
-## 4. 🧠 Reflections
+- **Effective on Short Clips**  
+  Works reasonably well with 5-second samples.
 
-### Q1: What were the most significant challenges?
+- **Interpretable**  
+  Simpler architecture makes debugging and tuning easier.
 
-- Ensuring **model generalization**
-- Removing **length-based bias**
-- Balancing **practicality (speed)** vs. **performance (accuracy)**
+#### 🔴 Weaknesses
 
----
+- **Overfitting**  
+  Model quickly memorizes small datasets.
 
-### Q2: How might this approach perform in the real world?
+- **Limited Context**  
+  LCNN lacks long-range temporal modeling like Transformers.
 
-- Requires diverse and noisy datasets to generalize well  
-- LCNN is feasible for **real-time deployment**  
-- Wav2Vec2.0 may need **distillation or pruning** to be practical
+- **Performance Ceiling**  
+  Struggles to exceed 75–80% AUC without ensemble or richer features.
 
+### ✅ Suggestions for future improvements
+- Improve Dataset Quality & Variety:
+  Use ASVspoof, FakeAVCeleb, and call center-style datasets for better generalization.
+  Add noisy environments, different languages, and newer fake voice synthesis methods (VITS, Bark, Vall-E).
+
+
+## 3. Reflection questions to address:
+
+### Q1: What were the most significant challenges? & Q2: How might this approach perform in the real world?
+
+| Category                | Challenge / Consideration                                                     | Solution / Implementation                                                                 |
+|-------------------------|-------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
+| 🔄 File Format Issues   | Large dataset size, case-sensitive `.wav` vs `.WAV` caused read errors       | Used consistent loader logic and added compatibility for both `.wav` and `.WAV` extensions  |
+| ⚙️ Preprocessing Dilemma | Model overfitting, generalization problems, bias due to length differences   | Applied `log-Mel + SpecAverage`, and fixed all audio to **5 seconds** using pad/crop       |
+| ⚖️ Model Selection       | Trade-off between inference speed and accuracy                               | Chose **LCNN** for fast, real-time capable, lightweight architecture                        |
+| 🔍 Real Data Requirement | Needed realistic audio (not just synthetic/generated)                        | Added **LJSpeech** dataset as genuine human voice source                                    |
 ---
 
 ### Q3: What additional data would improve performance?
 
-- Noisy real-world environments  
-- Non-English speakers  
-- Newer fake generation methods: **Vall-E, VITS, Bark**, etc.
+- **Noisy and real-life audio**  
+  e.g., phone calls, YouTube recordings, podcast snippets.
 
+- **Fake audio from modern generators**  
+  Incorporate samples from models like **Vall-E**, **Bark**, or **VITS** to stay up to date with the latest synthesis techniques.
+
+- **Multilingual data**  
+  To ensure the model generalizes across different languages and accents.
+
+- **Advanced data augmentation techniques**  
+  Such as: SpecMix, Pitch shift, Time-stretching, Background noise injection
 ---
 
 ### Q4: How would you deploy this?
 
-- Export as **ONNX** or **TorchScript**  
-- Apply **5-second sliding window inference**  
-- Deploy in **real-time streaming pipelines** (e.g., call center audio monitoring)
+#### 📦 Dataset Expansion for Generalization
+- **Add more diverse data** to improve model generalization:
+  - Noisy real-world audio (e.g., phone calls, podcasts, YouTube)
+  - Multiple languages and accents
+  - Fake audio from modern TTS models (e.g., Vall-E, Bark, VITS)
+- Ensure dataset includes varied recording environments, devices, and speakers.
 
+#### 🤖 Model Training Automation (Cloud)
+- Use **cloud platforms like AWS or Azure** to automate model training, evaluation, and deployment:
+  - Leverage **AWS SageMaker** or **Azure ML Pipelines**
+
+#### 🧠 Inference Pipeline
+- Implement **batch inference** for stored datasets and **real-time streaming inference** for live applications.
+
+#### 📱 Edge Deployment
+- Use the **LCNN model** for **low-latency, lightweight inference** on edge devices:
+  - Mobile phones (iOS/Android)
+  - Embedded systems (Raspberry Pi, NVIDIA Jetson)
+  - IoT devices (smart assistants, surveillance)
+
+- Convert model to **ONNX**, **TorchScript**, or **TFLite** for optimal performance on various platforms.
+
+#### 📊 Monitoring & Retraining
+- **Continuously monitor**:
+  - Prediction confidence levels
+  - Accuracy drift over time
+  - New types of fake audio
+- Set up **automated retraining pipelines** triggered by performance degradation or new data.
+- Use dashboards to visualize performance (e.g., via Amazon CloudWatch, Azure Monitor, or Grafana).
 ---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## 📚 Appendix
 
