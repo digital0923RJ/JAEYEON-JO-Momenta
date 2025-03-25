@@ -3,9 +3,7 @@
 ## Summary
 
 To briefly summarize, I selected three models—ResNet2, LCNN, and Wav2Vec2.0—for comparison.  
-After reviewing several papers, I found that most models struggle to generalize well.  
-Rather than prioritizing maximum accuracy, I focused on **real-time detection** of audio deepfakes.  
-If this were a competition or a task purely about performance, I would have chosen heavier models.  
+After reviewing several papers, I focused on **real-time detection** of audio deepfakes rther than prioritizing maximum accuracy, If this were a competition or a task purely about performance, I would have chosen heavier models.  
 However, if a model can reliably achieve ~90% accuracy, my priority is to **respond quickly** with a lightweight model in real-world scenarios.
 
 ---
